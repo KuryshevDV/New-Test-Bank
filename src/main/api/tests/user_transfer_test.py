@@ -1,42 +1,45 @@
+from random import randint
 import pytest
 from src.main.api.classes.api_manager import ApiManager
-from src.main.api.models.user_transfer_request import UserTransferRequest
+from src.main.api.models.create_user_request import CreateUserRequest
+from src.main.api.models.create_creditor_request import CreateCreditorRequest
 
 
 @pytest.mark.api
-class TestUserTransfer:
+class TestCreditRequest:
 
-    def test_user_transfer_success(self, api_manager: ApiManager, transfer_prepared_data: tuple):
-        """Позитивный тест: успешный перевод 2000.00 рублей между клиентами банка"""
-        sender_request, sender_account_id, receiver_account_id = transfer_prepared_data
+    def test_credit_request_success(self, api_manager: ApiManager, create_credit_user_request: CreateUserRequest,
+                                    create_credit_account_id: int):
+        """Позитивный тест: успешное получение кредита на валидную сумму от 5000 до 15000"""
+        random_valid_amount = randint(5000, 15000)
+        random_term = randint(3, 24)
 
-        # Act: Сборка payload и выполнение запроса перевода денег (передаем float)
-        transfer_payload = UserTransferRequest(
-            fromAccountId=sender_account_id,
-            toAccountId=receiver_account_id,
-            amount=2000.00
-        )
-        response = api_manager.user_steps.user_transfer(sender_request, transfer_payload)
+        credit_payload = CreateCreditorRequest(accountId=create_credit_account_id, amount=random_valid_amount,
+                                               termMonths=random_term)
+        response = api_manager.user_steps.credit_request(create_credit_user_request, credit_payload)
 
-        # Assert по API согласно Swagger: принудительно приводим к float обе части,
-        # чтобы типы данных (int/float) на бэкенде больше не ломали ассерт
-        assert response.fromAccountId == sender_account_id
-        assert float(response.fromAccountIdBalance) == float(4000.00)
+        assert response.creditId is not None, \
+            "Ожидали, что в ответе вернется сгенерированный ID кредита (creditId не должен быть None)"
 
-    def test_user_transfer_insufficient_funds(self, api_manager: ApiManager, transfer_prepared_data: tuple):
-        """Негативный тест: блокировка перевода при нехватке средств на балансе (8000.00 при балансе 6000.00)"""
-        sender_request, sender_account_id, receiver_account_id = transfer_prepared_data
+        assert response.amount == credit_payload.amount, \
+            f"Ожидали сумму одобренного кредита {credit_payload.amount}, но по факту пришло: {response.amount}"
 
-        # Нарушаем правила: запрашиваем сумму больше доступного остатка
-        invalid_transfer_payload = UserTransferRequest(
-            fromAccountId=sender_account_id,
-            toAccountId=receiver_account_id,
-            amount=8000.00
-        )
+    def test_credit_request_amount_too_low(self, api_manager: ApiManager, create_credit_user_request: CreateUserRequest,
+                                           create_credit_account_id: int):
+        """Негативный тест: проверка бизнес-блокировки при запросе суммы ниже минимального лимита (меньше 5000)"""
+        random_low_amount = randint(100, 4999)
+        random_term = randint(3, 24)
 
-        # Act & Assert: Ожидаем блокировку операции бизнес-логикой бэкенда (400 Bad Request)
-        with pytest.raises(Exception) as exc_info:
-            api_manager.user_steps.user_transfer(sender_request, invalid_transfer_payload)
+        invalid_credit_payload = CreateCreditorRequest(accountId=create_credit_account_id, amount=random_low_amount,
+                                                       termMonths=random_term)
+        expected_error = "Amount must be between"
 
-        # Проверяем текст ошибки бизнес-логики о нехватке денег на бэкенде
-        assert "Insufficient funds" in str(exc_info.value), f"Получили неожиданную ошибку: {exc_info.value}"
+        try:
+            api_manager.user_steps.credit_request(create_credit_user_request, invalid_credit_payload)
+            assert False, f"Ожидали ошибку валидации суммы '{expected_error}', но кредит успешно выдался"
+
+        except AssertionError as exc:
+            # Перехватываем стандартный ассерт фреймворка и сверяем текст ошибки лимитов
+            actual_error_text = str(exc)
+            assert expected_error in actual_error_text, \
+                f"Ожидали увидеть текст ошибки '{expected_error}', но по факту получили: '{actual_error_text}'"
