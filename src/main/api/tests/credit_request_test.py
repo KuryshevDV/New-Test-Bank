@@ -1,8 +1,11 @@
 from random import randint
+import requests
 import pytest
 from src.main.api.classes.api_manager import ApiManager
 from src.main.api.models.create_user_request import CreateUserRequest
 from src.main.api.models.create_creditor_request import CreateCreditorRequest
+from src.main.api.configs.config import Config
+from src.main.api.specs.request_specs import RequestSpecs
 
 
 @pytest.mark.api
@@ -26,23 +29,26 @@ class TestCreditRequest:
 
     def test_credit_request_amount_too_low(self, api_manager: ApiManager, create_credit_user_request: CreateUserRequest,
                                            create_credit_account_id: int):
-        """Негативный тест: проверка бизнес-блокировки при запросе суммы ниже минимального лимита (меньше 5000)"""
-
-        # Генерируем сумму ниже минимального лимита (от 100 до 4999)
+        """Негативный тест: проверка бизнес-блокировки при запросе суммы ниже минимального лимита (только степ и ассерт)"""
         random_low_amount = randint(100, 4999)
         random_term = randint(3, 24)
 
         invalid_credit_payload = CreateCreditorRequest(accountId=create_credit_account_id, amount=random_low_amount,
                                                        termMonths=random_term)
-
         expected_error = "Amount must be between"
 
-        try:
-            api_manager.user_steps.credit_request(create_credit_user_request, invalid_credit_payload)
-            assert False, f"Ожидали ошибку валидации суммы '{expected_error}', но кредит успешно выдался"
+        # ШАГ 1 (Степ): Прямой POST-запрос с заголовками авторизации фреймворка
+        url = f"{Config.fetch('backendUrl')}/credit/request"
+        headers = RequestSpecs.auth_headers(
+            username=create_credit_user_request.username,
+            password=create_credit_user_request.password
+        )
+        response = requests.post(url, json=invalid_credit_payload.model_dump(), headers=headers)
 
-        except AssertionError as exc:
-            # Перехватываем стандартный ассерт фреймворка и сверяем текст ошибки лимитов
-            actual_error_text = str(exc)
-            assert expected_error in actual_error_text, \
-                f"Ожидали увидеть текст ошибки '{expected_error}', но по факту получили: '{actual_error_text}'"
+        # ШАГ 2 (Ассерты): Чистая проверка статус-кода 400 и сообщения об ошибке
+        assert response.status_code == 400, \
+            f"Ожидали статус-код 400 Bad Request, но получили {response.status_code}"
+
+        actual_error = response.json().get("error")
+        assert expected_error in actual_error, \
+            f"Ожидали увидеть текст ошибки '{expected_error}', но по факту получили: '{actual_error}'"

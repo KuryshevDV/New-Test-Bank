@@ -1,45 +1,62 @@
-from random import randint
+from random import uniform
+import requests
 import pytest
 from src.main.api.classes.api_manager import ApiManager
-from src.main.api.models.create_user_request import CreateUserRequest
-from src.main.api.models.create_creditor_request import CreateCreditorRequest
+from src.main.api.models.user_transfer_request import UserTransferRequest
+from src.main.api.configs.config import Config
+from src.main.api.specs.request_specs import RequestSpecs
 
 
 @pytest.mark.api
-class TestCreditRequest:
+class TestUserTransfer:
 
-    def test_credit_request_success(self, api_manager: ApiManager, create_credit_user_request: CreateUserRequest,
-                                    create_credit_account_id: int):
-        """Позитивный тест: успешное получение кредита на валидную сумму от 5000 до 15000"""
-        random_valid_amount = randint(5000, 15000)
-        random_term = randint(3, 24)
+    def test_user_transfer_success(self, api_manager: ApiManager, transfer_prepared_data: tuple):
+        """Позитивный тест: успешный перевод денег"""
+        sender_request, sender_account_id, receiver_account_id = transfer_prepared_data
 
-        credit_payload = CreateCreditorRequest(accountId=create_credit_account_id, amount=random_valid_amount,
-                                               termMonths=random_term)
-        response = api_manager.user_steps.credit_request(create_credit_user_request, credit_payload)
+        # Диапазон строго по правилам бэкенда: от 500 до 5000
+        random_amount = round(uniform(500.00, 5000.00), 2)
+        initial_balance = 6000.00
+        expected_balance = initial_balance - random_amount
 
-        assert response.creditId is not None, \
-            "Ожидали, что в ответе вернется сгенерированный ID кредита (creditId не должен быть None)"
+        transfer_payload = UserTransferRequest(
+            fromAccountId=sender_account_id,
+            toAccountId=receiver_account_id,
+            amount=random_amount
+        )
+        response = api_manager.user_steps.user_transfer(sender_request, transfer_payload)
 
-        assert response.amount == credit_payload.amount, \
-            f"Ожидали сумму одобренного кредита {credit_payload.amount}, но по факту пришло: {response.amount}"
+        assert response.fromAccountId == sender_account_id, \
+            f"Ожидали ID отправителя {sender_account_id}, но получили: {response.fromAccountId}"
 
-    def test_credit_request_amount_too_low(self, api_manager: ApiManager, create_credit_user_request: CreateUserRequest,
-                                           create_credit_account_id: int):
-        """Негативный тест: проверка бизнес-блокировки при запросе суммы ниже минимального лимита (меньше 5000)"""
-        random_low_amount = randint(100, 4999)
-        random_term = randint(3, 24)
+        assert float(response.fromAccountIdBalance) == float(expected_balance), \
+            f"Ожидали остаток {expected_balance}, но получили: {response.fromAccountIdBalance}"
 
-        invalid_credit_payload = CreateCreditorRequest(accountId=create_credit_account_id, amount=random_low_amount,
-                                                       termMonths=random_term)
-        expected_error = "Amount must be between"
+    def test_user_transfer_insufficient_funds(self, api_manager: ApiManager, transfer_prepared_data: tuple):
+        """Негативный тест: блокировка перевода при нехватке средств (только степ и ассерт)"""
+        sender_request, sender_account_id, receiver_account_id = transfer_prepared_data
+        random_invalid_amount = round(uniform(7000.00, 10000.00), 2)
 
-        try:
-            api_manager.user_steps.credit_request(create_credit_user_request, invalid_credit_payload)
-            assert False, f"Ожидали ошибку валидации суммы '{expected_error}', но кредит успешно выдался"
+        invalid_transfer_payload = UserTransferRequest(
+            fromAccountId=sender_account_id,
+            toAccountId=receiver_account_id,
+            amount=random_invalid_amount
+        )
+        expected_error = "Insufficient funds"
 
-        except AssertionError as exc:
-            # Перехватываем стандартный ассерт фреймворка и сверяем текст ошибки лимитов
-            actual_error_text = str(exc)
-            assert expected_error in actual_error_text, \
-                f"Ожидали увидеть текст ошибки '{expected_error}', но по факту получили: '{actual_error_text}'"
+        # СТЕП: Отправляем прямой POST-запрос с авторизацией из фреймворка
+        url = f"{Config.fetch('backendUrl')}/account/transfer"
+        headers = RequestSpecs.auth_headers(
+            username=sender_request.username,
+            password=sender_request.password,
+            role=sender_request.role or "ROLE_USER"
+        )
+        response = requests.post(url, json=invalid_transfer_payload.model_dump(), headers=headers)
+
+        # АССЕРТЫ: Проверяем статус 422 и текст ошибки бизнес-логики напрямую из JSON
+        assert response.status_code == 422, \
+            f"Ожидали статус-код 422 Unprocessable Entity, но получили {response.status_code}"
+
+        actual_error = response.json().get("error")
+        assert expected_error in actual_error, \
+            f"Ожидали ошибку '{expected_error}', но бэкенд вернул: '{actual_error}'"
