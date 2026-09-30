@@ -1,11 +1,10 @@
 from random import uniform
 from requests import Session
-import requests
 from src.main.api.classes.api_manager import ApiManager
 from src.main.api.models.create_user_request import CreateUserRequest
 from src.main.api.models.user_deposit_request import UserDepositRequest
-from src.main.api.configs.config import Config
-from src.main.api.specs.request_specs import RequestSpecs
+from src.main.api.models.base_model import ErrorResponse
+from src.main.api.specs.response_specs import ResponseSpecs
 
 
 class TestUserDeposit:
@@ -22,24 +21,20 @@ class TestUserDeposit:
 
     def test_user_deposit_invalid(self, db_session: Session, api_manager: ApiManager,
                                   create_user_request: CreateUserRequest, create_account_user_id):
-        """Негативный тест: блокировка депозита на отрицательную сумму (только степ и ассерт)"""
+        """Негативный тест: блокировка депозита на отрицательную сумму"""
         random_invalid_amount = round(uniform(-1000.00, -1.00), 2)
         user_deposit_request = UserDepositRequest(accountId=create_account_user_id, amount=random_invalid_amount)
 
         expected_error = "Amount must be greater than 0"
 
-        # ШАГ 1 (Степ): Прямой POST-запрос с авторизацией из фреймворка в обход Pydantic-валидатора
-        url = f"{Config.fetch('backendUrl')}/account/deposit"
-        headers = RequestSpecs.auth_headers(
-            username=create_user_request.username,
-            password=create_user_request.password
+        # СТЕП: Передаем спецификацию 400 ошибки и модель ErrorResponse в аргументы метода шага
+        response = api_manager.user_steps.user_deposit(
+            create_user_request=create_user_request,
+            user_deposit=user_deposit_request,
+            response_spec=ResponseSpecs.request_bad(),
+            response_model=ErrorResponse
         )
-        response = requests.post(url, json=user_deposit_request.model_dump(), headers=headers)
 
-        # ШАГ 2 (Ассерты): Прямая и чистая проверка статус-кода 400 и текста ошибки напрямую из JSON
-        assert response.status_code == 400, \
-            f"Ожидали статус-код 400 Bad Request, но получили {response.status_code}"
-
-        actual_error = response.json().get("error")
-        assert expected_error in actual_error, \
-            f"Ожидали ошибку валидации '{expected_error}', но бэкенд вернул: '{actual_error}'"
+        # АССЕРТ: Статус-код проверился автоматически внутри спеки, проверяем только текст бизнес-ошибки
+        assert expected_error in response.error, \
+            f"Ожидали ошибку валидации '{expected_error}', но бэкенд вернул: '{response.error}'"

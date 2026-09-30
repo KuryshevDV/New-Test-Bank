@@ -60,7 +60,7 @@ class Endpoint(Enum):
         response_model=UserTransferResponse
     )
 
-    CREDIT_ACCOUNT = EndpointConfiguration(
+    CREDIT_REQUEST = EndpointConfiguration(
         request_model=CreateCreditorRequest,
         url="/credit/request",
         response_model=CreateCreditorResponse

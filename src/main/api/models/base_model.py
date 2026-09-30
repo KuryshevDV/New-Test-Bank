@@ -5,3 +5,5 @@ class BaseModel(BM):
     ...
 
 
+class ErrorResponse(BaseModel):
+    error: str

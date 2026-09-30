@@ -20,49 +20,52 @@ class UserSteps(BaseSteps):
         ).post()
         return response
 
-    def user_deposit(self, create_user_request: CreateUserRequest, user_deposit):
+    def user_deposit(self, create_user_request: CreateUserRequest, user_deposit, response_spec=None, response_model=None):
         response = ValidateCrudRequester(
-            RequestSpecs.auth_headers(username=create_user_request.username, password=create_user_request.password),
-            Endpoint.USER_DEPOSIT,
-            ResponseSpecs.request_ok()
-        ).post(user_deposit)
+            request_spec=RequestSpecs.auth_headers(username=create_user_request.username, password=create_user_request.password),
+            endpoint=Endpoint.USER_DEPOSIT,
+            response_spec=ResponseSpecs.request_ok()
+        ).post(user_deposit, response_spec=response_spec, response_model=response_model)
         return response
 
-    def user_transfer(self, create_user_request: CreateUserRequest, user_transfer: UserTransferRequest):
+    def user_transfer(self, create_user_request: CreateUserRequest, user_transfer: UserTransferRequest, response_spec=None, response_model=None):
         response = ValidateCrudRequester(
-            RequestSpecs.auth_headers(
+            request_spec=RequestSpecs.auth_headers(
                 username=create_user_request.username,
                 password=create_user_request.password,
                 role=create_user_request.role or "ROLE_USER"
             ),
-            Endpoint.USER_TRANSFER,
-            ResponseSpecs.request_ok()
-        ).post(user_transfer)
+            endpoint=Endpoint.USER_TRANSFER,
+            response_spec=ResponseSpecs.request_ok()
+        ).post(user_transfer, response_spec=response_spec, response_model=response_model)
         return response
 
-    def credit_request(self, create_creditor_request: CreateCreditorRequest, credit_account):
+    def credit_request(self, create_user_request: CreateUserRequest, credit_request, response_spec=None, response_model=None):
+        active_spec = response_spec if response_spec is not None else ResponseSpecs.request_created()
         response = ValidateCrudRequester(
-            RequestSpecs.auth_headers(
-                username=create_creditor_request.username,
-                password=create_creditor_request.password,
-                role="ROLE_CREDIT_SECRET"
+            request_spec=RequestSpecs.auth_headers(
+                username=create_user_request.username,
+                password=create_user_request.password,
+                role=create_user_request.role or "ROLE_USER"
             ),
-            Endpoint.CREDIT_ACCOUNT,
-            ResponseSpecs.request_created()
-        ).post(credit_account)
+            endpoint=Endpoint.CREDIT_REQUEST,
+            response_spec=active_spec
+        ).post(credit_request, response_spec=response_spec, response_model=response_model)
         return response
 
-    def credit_repay(self, create_creditor_request: CreateCreditorRequest, credit_repay):
+    def credit_repay(self, create_user_request: CreateUserRequest, credit_repay, response_spec=None, response_model=None):
+        active_spec = response_spec if response_spec is not None else ResponseSpecs.request_ok()
         response = ValidateCrudRequester(
-            RequestSpecs.auth_headers(
-                username=create_creditor_request.username,
-                password=create_creditor_request.password,
-                role=create_creditor_request.role
+            request_spec=RequestSpecs.auth_headers(
+                username=create_user_request.username,
+                password=create_user_request.password,
+                role=create_user_request.role or "ROLE_USER"
             ),
-            Endpoint.CREDIT_REPAY,
-            ResponseSpecs.request_ok()
-        ).post(credit_repay)
+            endpoint=Endpoint.CREDIT_REPAY,
+            response_spec=active_spec
+        ).post(credit_repay, response_spec=response_spec, response_model=response_model)
         return response
+
 
 
 

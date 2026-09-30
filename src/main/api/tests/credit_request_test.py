@@ -1,11 +1,10 @@
 from random import randint
-import requests
 import pytest
 from src.main.api.classes.api_manager import ApiManager
 from src.main.api.models.create_user_request import CreateUserRequest
 from src.main.api.models.create_creditor_request import CreateCreditorRequest
-from src.main.api.configs.config import Config
-from src.main.api.specs.request_specs import RequestSpecs
+from src.main.api.models.base_model import ErrorResponse
+from src.main.api.specs.response_specs import ResponseSpecs
 
 
 @pytest.mark.api
@@ -29,7 +28,7 @@ class TestCreditRequest:
 
     def test_credit_request_amount_too_low(self, api_manager: ApiManager, create_credit_user_request: CreateUserRequest,
                                            create_credit_account_id: int):
-        """Негативный тест: проверка бизнес-блокировки при запросе суммы ниже минимального лимита (только степ и ассерт)"""
+        """Негативный тест: проверка бизнес-блокировки при запросе суммы ниже минимального лимита"""
         random_low_amount = randint(100, 4999)
         random_term = randint(3, 24)
 
@@ -37,18 +36,14 @@ class TestCreditRequest:
                                                        termMonths=random_term)
         expected_error = "Amount must be between"
 
-        # ШАГ 1 (Степ): Прямой POST-запрос с заголовками авторизации фреймворка
-        url = f"{Config.fetch('backendUrl')}/credit/request"
-        headers = RequestSpecs.auth_headers(
-            username=create_credit_user_request.username,
-            password=create_credit_user_request.password
+        # СТЕП: Передаем спецификацию 400 ошибки и модель ErrorResponse в аргументы метода шага
+        response = api_manager.user_steps.credit_request(
+            create_user_request=create_credit_user_request,
+            credit_request=invalid_credit_payload,
+            response_spec=ResponseSpecs.request_bad(),
+            response_model=ErrorResponse
         )
-        response = requests.post(url, json=invalid_credit_payload.model_dump(), headers=headers)
 
-        # ШАГ 2 (Ассерты): Чистая проверка статус-кода 400 и сообщения об ошибке
-        assert response.status_code == 400, \
-            f"Ожидали статус-код 400 Bad Request, но получили {response.status_code}"
-
-        actual_error = response.json().get("error")
-        assert expected_error in actual_error, \
-            f"Ожидали увидеть текст ошибки '{expected_error}', но по факту получили: '{actual_error}'"
+        # АССЕРТ: Статус-код проверяется автоматически внутри спеки, проверяем только текст ошибки
+        assert expected_error in response.error, \
+            f"Ожидали увидеть текст ошибки '{expected_error}', но по факту получили: '{response.error}'"
