@@ -1,12 +1,10 @@
-from random import randint
-
+from random import randint, uniform
 import pytest
-
 from src.main.api.models.create_creditor_request import CreateCreditorRequest
 from src.main.api.models.create_user_request import CreateUserRequest
 from src.main.api.generators.model_generator import RandomModelGenerator
 from src.main.api.models.user_deposit_request import UserDepositRequest
-
+from src.main.api.generators.random_data_generator import RandomDataGenerator
 
 @pytest.fixture
 def create_user_request(api_manager):
@@ -106,6 +104,46 @@ def transfer_prepared_data(api_manager, create_user_request, create_account_user
 
     # Возвращаем начальный баланс четвертым элементом в кортеже
     return create_user_request, create_account_user_id, create_receiver_account_id, initial_balance
+
+# === ПОЗИТИВНЫЕ ФИКСТУРЫ-СЛОТЫ ===
+@pytest.fixture
+def valid_deposit_amount():
+    return RandomDataGenerator.valid_deposit_amount()
+
+
+@pytest.fixture
+def valid_transfer_amount():
+    return RandomDataGenerator.valid_transfer_amount()
+
+
+@pytest.fixture
+def valid_credit_data():
+    return RandomDataGenerator.valid_credit_amount(), RandomDataGenerator.valid_credit_term()
+
+
+# === НЕГАТИВНЫЕ ФИКСТУРЫ-СЛОТЫ ===
+@pytest.fixture
+def invalid_deposit_amount():
+    return RandomDataGenerator.deposit_amount_negative()
+
+
+@pytest.fixture
+def invalid_credit_amount():
+    return RandomDataGenerator.credit_amount_negative()
+
+
+@pytest.fixture
+def invalid_repay_amount(active_credit_data):
+    _, _, credit_amount = active_credit_data
+    return RandomDataGenerator.repay_amount_negative(credit_amount)
+
+
+@pytest.fixture
+def invalid_transfer_amount(transfer_prepared_data):
+    # Извлекаем initial_balance из кортежа, подготовленного фикстурой
+    _, _, _, initial_balance = transfer_prepared_data
+    return RandomDataGenerator.transfer_amount_negative(initial_balance)
+
 
 
 

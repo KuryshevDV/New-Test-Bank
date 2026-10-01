@@ -26,24 +26,19 @@ class TestCreditRepay:
             f"Ожидали сумму погашения {repay_payload.amount}, но по факту зачислилось: {response.amountDeposited}"
 
     def test_credit_repay_partial_forbidden(self, db_session: Session, api_manager: ApiManager,
-                                            create_credit_user_request: CreateUserRequest, active_credit_data: tuple):
+                                            create_credit_user_request: CreateUserRequest, active_credit_data: tuple,
+                                            invalid_repay_amount):
         """Негативный тест: проверка бизнес-блокировки при попытке частичного погашения кредита"""
-        credit_id, account_id, credit_amount = active_credit_data
+        credit_id, account_id, _ = active_credit_data
 
-        # Динамический расчет: берём сумму меньше реального долга, чтобы вызвать ошибку без хардкода чисел
-        invalid_amount = credit_amount - 1000.00
-
-        invalid_repay_payload = CreateRepayRequest(creditId=credit_id, accountId=account_id, amount=invalid_amount)
+        invalid_repay_payload = CreateRepayRequest(creditId=credit_id, accountId=account_id,
+                                                   amount=invalid_repay_amount)
         expected_error = "The amount is not enough"
 
-        # СТЕП: передаем кастомную спецификацию ошибки 422 и модель ErrorResponse в аргументы
-        response = api_manager.user_steps.credit_repay(
-            create_user_request=create_credit_user_request,
-            credit_repay=invalid_repay_payload,
-            response_spec=ResponseSpecs.request_unprocessable(),
-            response_model=ErrorResponse
-        )
+        # СТЕП: Вызываем правильный негативный метод без передачи спек напрямую из теста
+        response = api_manager.user_steps.credit_repay_negative(create_credit_user_request, invalid_repay_payload)
 
-        # АССЕРТ: Проверяем только текст бизнес-ошибки
+        # АССЕРТ
         assert expected_error in response.error, \
             f"Ожидали увидеть текст ошибки '{expected_error}', но по факту получили: '{response.error}'"
+
